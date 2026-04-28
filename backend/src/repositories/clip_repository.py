@@ -26,12 +26,9 @@ class ClipRepository:
         relevance_score: float,
         reasoning: str,
         clip_order: int,
-        virality_score: int = 0,
-        hook_score: int = 0,
-        engagement_score: int = 0,
-        value_score: int = 0,
         shareability_score: int = 0,
         hook_type: Optional[str] = None,
+        video_url: Optional[str] = None,
     ) -> str:
         """Create a new clip record and return its ID."""
         try:
@@ -41,12 +38,12 @@ class ClipRepository:
                     (task_id, filename, file_path, start_time, end_time, duration,
                      text, relevance_score, reasoning, clip_order,
                      virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
-                     created_at)
+                     video_url, created_at)
                     VALUES
                     (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
                      :text, :relevance_score, :reasoning, :clip_order,
                      :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
-                     NOW())
+                     :video_url, NOW())
                     RETURNING id
                 """),
                 {
@@ -66,6 +63,7 @@ class ClipRepository:
                     "value_score": value_score,
                     "shareability_score": shareability_score,
                     "hook_type": hook_type,
+                    "video_url": video_url,
                 },
             )
         except Exception:
@@ -74,10 +72,10 @@ class ClipRepository:
                 sa_text("""
                     INSERT INTO generated_clips
                     (task_id, filename, file_path, start_time, end_time, duration,
-                     text, relevance_score, reasoning, clip_order, created_at)
+                     text, relevance_score, reasoning, clip_order, video_url, created_at)
                     VALUES
                     (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                     :text, :relevance_score, :reasoning, :clip_order, NOW())
+                     :text, :relevance_score, :reasoning, :clip_order, :video_url, NOW())
                     RETURNING id
                 """),
                 {
@@ -91,6 +89,7 @@ class ClipRepository:
                     "relevance_score": relevance_score,
                     "reasoning": reasoning,
                     "clip_order": clip_order,
+                    "video_url": video_url,
                 },
             )
         clip_id = result.scalar()
@@ -107,7 +106,8 @@ class ClipRepository:
                 sa_text("""
                     SELECT id, filename, file_path, start_time, end_time, duration,
                            text, relevance_score, reasoning, clip_order, created_at,
-                           virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type
+                           virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                           video_url
                     FROM generated_clips
                     WHERE task_id = :task_id
                     ORDER BY clip_order ASC
@@ -142,7 +142,7 @@ class ClipRepository:
                     "reasoning": row.reasoning,
                     "clip_order": row.clip_order,
                     "created_at": row.created_at.isoformat(),
-                    "video_url": f"/clips/{row.filename}",
+                    "video_url": row.video_url or f"/clips/{row.filename}",
                     "virality_score": row.virality_score or 0,
                     "hook_score": row.hook_score or 0,
                     "engagement_score": row.engagement_score or 0,
@@ -199,7 +199,7 @@ class ClipRepository:
                     SELECT id, task_id, filename, file_path, start_time, end_time, duration,
                            text, relevance_score, reasoning, clip_order,
                            virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
-                           created_at
+                           video_url, created_at
                     FROM generated_clips
                     WHERE id = :clip_id
                     """
@@ -242,7 +242,7 @@ class ClipRepository:
             "shareability_score": row.shareability_score or 0,
             "hook_type": row.hook_type,
             "created_at": row.created_at.isoformat(),
-            "video_url": f"/clips/{row.filename}",
+            "video_url": row.video_url or f"/clips/{row.filename}",
         }
 
     @staticmethod
@@ -255,6 +255,7 @@ class ClipRepository:
         end_time: str,
         duration: float,
         text: str,
+        video_url: Optional[str] = None,
     ) -> None:
         """Update core clip metadata and file path."""
         await db.execute(
@@ -267,6 +268,7 @@ class ClipRepository:
                     end_time = :end_time,
                     duration = :duration,
                     text = :text,
+                    video_url = :video_url,
                     updated_at = NOW()
                 WHERE id = :clip_id
                 """
@@ -279,6 +281,7 @@ class ClipRepository:
                 "end_time": end_time,
                 "duration": duration,
                 "text": text,
+                "video_url": video_url,
             },
         )
         await db.commit()

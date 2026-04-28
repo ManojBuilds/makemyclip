@@ -654,6 +654,7 @@ async def export_clip(
                 detail=f"Invalid preset. Use one of: {', '.join(EXPORT_PRESETS.keys())}",
             )
 
+        config = get_config()
         task_service = TaskService(db)
         await _require_task_owner(request, task_service, db, task_id)
         clip = await task_service.clip_repo.get_clip_by_id(db, clip_id)
@@ -685,6 +686,7 @@ async def cancel_task(
 ):
     """Cancel an active queued or processing task."""
     try:
+        config = get_config()
         task_service = TaskService(db)
         task = await _require_task_owner(request, task_service, db, task_id)
 
@@ -732,6 +734,7 @@ async def resume_task(
 ):
     """Resume a cancelled or errored task by enqueueing a new worker job."""
     try:
+        config = get_config()
         task_service = TaskService(db)
         task = await _require_task_owner(request, task_service, db, task_id)
 
@@ -814,6 +817,7 @@ async def resume_task(
 @router.get("/dead-letter/list")
 async def list_dead_letter_tasks():
     """List tasks that exhausted retries and landed in dead-letter store."""
+    config = get_config()
     redis_client = redis.Redis(
         host=config.redis_host, port=config.redis_port, password=config.redis_password, decode_responses=True
     )

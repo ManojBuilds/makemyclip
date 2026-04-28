@@ -79,7 +79,10 @@ def find_font_path(
     normalized_requested = re.sub(r"[^a-z0-9]", "", requested.lower())
     for font in get_available_fonts(user_id):
         normalized_name = re.sub(r"[^a-z0-9]", "", font["name"].lower())
-        if normalized_requested == normalized_name:
+        if (normalized_requested == normalized_name or 
+            normalized_name.startswith(normalized_requested) or 
+            normalized_requested in normalized_name or
+            normalized_name in normalized_requested):
             return Path(font["file_path"])
 
     if allow_all_user_fonts:

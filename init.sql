@@ -95,6 +95,7 @@ CREATE TABLE generated_clips (
     value_score INTEGER DEFAULT 0,
     shareability_score INTEGER DEFAULT 0,
     hook_type VARCHAR(50),
+    video_url VARCHAR(1000),
 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

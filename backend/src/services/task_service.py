@@ -18,6 +18,7 @@ from ..repositories.source_repository import SourceRepository
 from ..repositories.clip_repository import ClipRepository
 from ..repositories.cache_repository import CacheRepository
 from .video_service import VideoService
+from .storage import StorageService
 from .task_completion_email_service import (
     TaskCompletionEmailService,
     TaskCompletionRecipient,
@@ -45,6 +46,7 @@ class TaskService:
         self.cache_repo = CacheRepository()
         self.video_service = VideoService()
         self.config = config or get_config()
+        self.storage_service = StorageService(self.config)
 
     @staticmethod
     def _build_cache_key(url: str, source_type: str, processing_mode: str) -> str:
@@ -137,6 +139,7 @@ class TaskService:
         progress_callback: Optional[Callable] = None,
         should_cancel: Optional[Callable] = None,
         clip_ready_callback: Optional[Callable] = None,
+        cleanup_settings: dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """
         Process a task: download video, analyze, create clips.
@@ -234,9 +237,9 @@ class TaskService:
                     raise Exception("Task cancelled")
 
                 # Update progress: 70-95% spread across clips
-                clip_progress = 70 + int(
-                    ((i + 1) / total_clips) * 25
-                ) if total_clips > 0 else 95
+                clip_progress = (
+                    70 + int(((i + 1) / total_clips) * 25) if total_clips > 0 else 95
+                )
                 await update_progress(
                     clip_progress,
                     f"Creating clip {i + 1}/{total_clips}...",
@@ -258,6 +261,11 @@ class TaskService:
                 if clip_info is None:
                     continue  # Skip failed clip
 
+                # Upload to storage (Local or S3/R2)
+                video_url = await self.storage_service.upload_file(
+                    Path(clip_info["path"]), clip_info["filename"]
+                )
+
                 # Save to DB immediately
                 clip_id = await self.clip_repo.create_clip(
                     self.db,
@@ -277,6 +285,7 @@ class TaskService:
                     value_score=clip_info.get("value_score", 0),
                     shareability_score=clip_info.get("shareability_score", 0),
                     hook_type=clip_info.get("hook_type"),
+                    video_url=video_url,
                 )
                 await self.db.commit()
                 clip_ids.append(clip_id)
@@ -286,15 +295,11 @@ class TaskService:
 
                 # Notify frontend via SSE
                 if clip_ready_callback:
-                    clip_record = await self.clip_repo.get_clip_by_id(
-                        self.db, clip_id
-                    )
+                    clip_record = await self.clip_repo.get_clip_by_id(self.db, clip_id)
                     if clip_record:
                         await clip_ready_callback(i, total_clips, clip_record)
 
-            stage_timings["render_seconds"] = round(
-                perf_counter() - render_start, 3
-            )
+            stage_timings["render_seconds"] = round(perf_counter() - render_start, 3)
 
             # Mark as completed
             await self.task_repo.update_task_status(
@@ -370,7 +375,9 @@ class TaskService:
     ) -> None:
         context = await self.task_repo.get_task_notification_context(self.db, task_id)
         if not context:
-            logger.warning("Task %s missing notification context; skipping email", task_id)
+            logger.warning(
+                "Task %s missing notification context; skipping email", task_id
+            )
             return
 
         if not context.get("notify_on_completion"):
@@ -593,6 +600,11 @@ class TaskService:
 
         clip_ids = []
         for i, clip_info in enumerate(clips_info):
+            # Upload to storage
+            video_url = await self.storage_service.upload_file(
+                Path(clip_info["path"]), clip_info["filename"]
+            )
+
             clip_id = await self.clip_repo.create_clip(
                 self.db,
                 task_id=task_id,
@@ -612,6 +624,7 @@ class TaskService:
                 value_score=clip_info.get("value_score", 0),
                 shareability_score=clip_info.get("shareability_score", 0),
                 hook_type=clip_info.get("hook_type"),
+                video_url=video_url,
             )
             clip_ids.append(clip_id)
 
@@ -643,6 +656,9 @@ class TaskService:
         new_start = self._seconds_to_mmss(start_seconds)
         new_end = self._seconds_to_mmss(end_seconds)
 
+        # Upload to storage
+        video_url = await self.storage_service.upload_file(output_path, output_path.name)
+
         await self.clip_repo.update_clip(
             self.db,
             clip_id,
@@ -652,6 +668,7 @@ class TaskService:
             new_end,
             clip_duration,
             clip.get("text") or "",
+            video_url=video_url,
         )
         return (await self.clip_repo.get_clip_by_id(self.db, clip_id)) or {}
 
@@ -675,6 +692,9 @@ class TaskService:
         split_abs = start_seconds + clamped_split
         end_seconds = parse_timestamp_to_seconds(clip["end_time"])
 
+        # Upload first part
+        video_url_1 = await self.storage_service.upload_file(first_path, first_path.name)
+
         await self.clip_repo.update_clip(
             self.db,
             clip_id,
@@ -684,7 +704,11 @@ class TaskService:
             self._seconds_to_mmss(split_abs),
             clamped_split,
             clip.get("text") or "",
+            video_url=video_url_1,
         )
+
+        # Upload second part
+        video_url_2 = await self.storage_service.upload_file(second_path, second_path.name)
 
         await self.clip_repo.create_clip(
             self.db,
@@ -704,6 +728,7 @@ class TaskService:
             value_score=clip.get("value_score", 0),
             shareability_score=clip.get("shareability_score", 0),
             hook_type=clip.get("hook_type"),
+            video_url=video_url_2,
         )
 
         await self.clip_repo.reorder_task_clips(self.db, task_id)
@@ -731,6 +756,9 @@ class TaskService:
         duration = sum(float(c.get("duration", 0.0)) for c in ordered)
         text = " ".join((c.get("text") or "").strip() for c in ordered if c.get("text"))
 
+        # Upload merged clip
+        video_url = await self.storage_service.upload_file(merged_path, merged_path.name)
+
         first = ordered[0]
         await self.clip_repo.update_clip(
             self.db,
@@ -741,6 +769,7 @@ class TaskService:
             end_time,
             duration,
             text,
+            video_url=video_url,
         )
 
         for clip in ordered[1:]:
@@ -773,6 +802,9 @@ class TaskService:
             highlight_words,
         )
 
+        # Upload updated clip
+        video_url = await self.storage_service.upload_file(output_path, output_path.name)
+
         await self.clip_repo.update_clip(
             self.db,
             clip_id,
@@ -782,6 +814,7 @@ class TaskService:
             clip["end_time"],
             clip["duration"],
             caption_text,
+            video_url=video_url,
         )
         return (await self.clip_repo.get_clip_by_id(self.db, clip_id)) or {}
 

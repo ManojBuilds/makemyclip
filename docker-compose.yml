@@ -46,7 +46,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -58,13 +58,13 @@ services:
       dockerfile: Dockerfile
     container_name: supoclip-backend
     platform: linux/amd64
-    command: [".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: [ ".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000" ]
     ports:
       - "8000:8000"
     volumes:
       - ./backend/src:/app/src
-      - uploads:/app/uploads
-      - clips:/app/clips
+      - ./backend/temp:/app/uploads
+      - ./backend/clips:/app/clips
       - ./backend/fonts:/app/fonts
       - ./backend/transitions:/app/transitions
     environment:
@@ -107,7 +107,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -120,11 +120,11 @@ services:
       dockerfile: Dockerfile
     container_name: supoclip-worker
     platform: linux/amd64
-    command: [".venv/bin/arq", "src.workers.tasks.WorkerSettings"]
+    command: [ ".venv/bin/arq", "src.workers.tasks.WorkerSettings" ]
     volumes:
       - ./backend/src:/app/src
-      - uploads:/app/uploads
-      - clips:/app/clips
+      - ./backend/temp:/app/uploads
+      - ./backend/clips:/app/clips
       - ./backend/fonts:/app/fonts
       - ./backend/transitions:/app/transitions
     environment:
@@ -172,34 +172,27 @@ services:
   # Redis for caching and job queues (useful for video processing)
   redis:
     image: redis:7-alpine
-    container_name: supoclip-redis
     ports:
       - "6379:6379"
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-    command:
-      [
-        "sh",
-        "-c",
-        "if [ -n \"$${REDIS_PASSWORD}\" ]; then exec docker-entrypoint.sh redis-server --requirepass \"$${REDIS_PASSWORD}\"; fi; exec docker-entrypoint.sh redis-server",
-      ]
+    command: [ "sh", "-c", "if [ -n \"$${REDIS_PASSWORD}\" ]; then exec docker-entrypoint.sh redis-server --requirepass \"$${REDIS_PASSWORD}\"; fi; exec docker-entrypoint.sh redis-server" ]
     volumes:
       - redis_data:/data
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "if [ -n \"$${REDIS_PASSWORD}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi",
-        ]
+      test: [ "CMD-SHELL", "if [ -n \"$${REDIS_PASSWORD}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi" ]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 5s
 
   # PostgreSQL database for storing video metadata, user data, etc.
   postgres:
     image: postgres:15-alpine
     container_name: supoclip-postgres
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_DB: supoclip
       POSTGRES_USER: supoclip
@@ -209,10 +202,11 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U supoclip -d supoclip"]
+      test: [ "CMD-SHELL", "pg_isready -U supoclip -d supoclip" ]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 5s
 
 volumes:
   uploads:

@@ -27,7 +27,7 @@ class Config:
             os.getenv("APIFY_YOUTUBE_DEFAULT_QUALITY", "1080")
         )
 
-        self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "5400"))
+        self.max_video_duration = int(os.getenv("MAX_VIDEO_DURATION", "10800"))
         self.output_dir = os.getenv("OUTPUT_DIR", "outputs")
 
         self.max_clips = int(os.getenv("MAX_CLIPS", "10"))
@@ -39,6 +39,7 @@ class Config:
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
         self.redis_password = self._get_optional_env("REDIS_PASSWORD")
+        self.redis_ssl = self._get_bool_env("REDIS_SSL", False)
 
         # Fail-safe: queued tasks should not stay queued forever
         self.queued_task_timeout_seconds = int(
@@ -67,13 +68,27 @@ class Config:
         self.app_base_url = (
             self._get_optional_env("NEXT_PUBLIC_APP_URL") or "http://localhost:3000"
         ).rstrip("/")
-        self.discord_feedback_webhook_url = self._get_optional_env("DISCORD_FEEDBACK_WEBHOOK_URL")
-        self.discord_sales_webhook_url = self._get_optional_env("DISCORD_SALES_WEBHOOK_URL")
+        self.discord_feedback_webhook_url = self._get_optional_env(
+            "DISCORD_FEEDBACK_WEBHOOK_URL"
+        )
+        self.discord_sales_webhook_url = self._get_optional_env(
+            "DISCORD_SALES_WEBHOOK_URL"
+        )
         self.default_processing_mode = os.getenv("DEFAULT_PROCESSING_MODE", "fast")
         self.fast_mode_max_clips = int(os.getenv("FAST_MODE_MAX_CLIPS", "4"))
         self.fast_mode_transcript_model = os.getenv(
             "FAST_MODE_TRANSCRIPT_MODEL", "nano"
         )
+        # S3 / Cloudflare R2 Storage Configuration
+        self.s3_bucket = self._get_optional_env("S3_BUCKET")
+        self.s3_access_key_id = self._get_optional_env("S3_ACCESS_KEY_ID")
+        self.s3_secret_access_key = self._get_optional_env("S3_SECRET_ACCESS_KEY")
+        self.s3_endpoint_url = self._get_optional_env("S3_ENDPOINT_URL")
+        self.s3_region_name = os.getenv("S3_REGION_NAME", "us-east-1")
+        self.storage_provider = os.getenv(
+            "STORAGE_PROVIDER", "local"
+        )  # 'local' or 's3'
+        self.storage_public_base_url = self._get_optional_env("STORAGE_PUBLIC_BASE_URL")
 
     @staticmethod
     def _get_optional_env(name: str):
@@ -142,5 +157,7 @@ def get_config() -> Config:
 
 
 def set_config_override(config: Config | None) -> None:
+    global _config_override
+    _config_override = config
     global _config_override
     _config_override = config

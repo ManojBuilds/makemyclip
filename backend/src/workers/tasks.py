@@ -116,6 +116,7 @@ async def process_video_task(
             # Error will be caught by arq and task status will be updated
             raise
 
+
 # Worker configuration for arq
 class WorkerSettings:
     """Configuration for arq worker."""
@@ -131,7 +132,11 @@ class WorkerSettings:
 
     # Redis settings from environment
     redis_settings = RedisSettings(
-        host=config.redis_host, port=config.redis_port, password=config.redis_password, database=0
+        host=config.redis_host,
+        port=config.redis_port,
+        password=config.redis_password,
+        ssl=config.redis_ssl,
+        database=0,
     )
 
     # Retry settings

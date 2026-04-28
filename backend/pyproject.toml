@@ -21,7 +21,7 @@ dependencies = [
     "moviepy>=2.2.1",
     "opencv-python>=4.8.0",
     "srt-equalizer>=0.1.10",
-    "assemblyai>=0.35.0",
+    "assemblyai>=0.63.0",
     "srt>=3.5.3",
     "mediapipe>=0.10.0",
     "numpy>=1.24.0",
@@ -31,6 +31,8 @@ dependencies = [
     "redis>=5.0.0",
     "resend>=2.13.0",
     "requests>=2.32.0",
+    "pysubs2>=1.8.1",
+    "boto3>=1.34.0",
 ]
 
 [dependency-groups]

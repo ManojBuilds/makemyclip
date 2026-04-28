@@ -578,7 +578,9 @@ def download_youtube_video(
         return None
 
     downloader = YouTubeDownloader()
-    _remove_cached_downloads(downloader.temp_dir, video_id)
+    
+    # Always fresh download
+    # _remove_cached_downloads(downloader.temp_dir, video_id)
 
     config = get_config()
     if config.apify_api_token:

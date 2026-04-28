@@ -16,6 +16,9 @@ ENV PATH="/root/.deno/bin:${PATH}"
 # Install uv package manager
 RUN pip install uv
 
+# Increase network timeout for uv to prevent failures during package download/extraction
+ENV UV_HTTP_TIMEOUT=300
+
 # Set working directory
 WORKDIR /app
 
@@ -37,11 +40,15 @@ COPY src/ ./src/
 COPY fonts/ ./fonts/
 COPY transitions/ ./transitions/
 
+# Copy and prepare production start script
+COPY start_prod.sh ./
+RUN chmod +x ./start_prod.sh
+
 # Create necessary directories for video processing
 RUN mkdir -p /app/uploads /app/clips /app/logs /tmp
 
-# Expose the port FastAPI will run on
-EXPOSE 8000
+# Expose the port (FastAPI/Hugging Face default)
+EXPOSE 7860
 
-# Activate virtual environment and start the application
-CMD [".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start the application using the multi-process script
+CMD ["./start_prod.sh"]

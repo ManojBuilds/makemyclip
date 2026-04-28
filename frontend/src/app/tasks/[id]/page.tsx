@@ -834,7 +834,10 @@ export default function TaskPage() {
                     <CardContent className="p-0">
                       <div className="flex flex-col lg:flex-row">
                         <div className="relative flex-shrink-0 bg-black rounded-lg overflow-hidden m-3">
-                          <DynamicVideoPlayer src={`${apiUrl}${clip.video_url}`} poster="/placeholder-video.jpg" />
+                          <DynamicVideoPlayer 
+                            src={clip.video_url.startsWith("http") ? clip.video_url : `${apiUrl}${clip.video_url}`} 
+                            poster="/placeholder-video.jpg" 
+                          />
                         </div>
                         <div className="p-6 flex-1">
                           <div className="flex items-start justify-between mb-4">
@@ -872,7 +875,10 @@ export default function TaskPage() {
                             </div>
                           )}
                           <Button size="sm" variant="outline" asChild>
-                            <a href={`${apiUrl}${clip.video_url}`} download={clip.filename}>
+                            <a 
+                              href={clip.video_url.startsWith("http") ? clip.video_url : `${apiUrl}${clip.video_url}`} 
+                              download={clip.filename}
+                            >
                               <Download className="w-4 h-4" />
                               Download
                             </a>
@@ -1075,7 +1081,10 @@ export default function TaskPage() {
                   <div className="flex flex-col lg:flex-row">
                     {/* Video Player */}
                     <div className="relative flex-shrink-0 bg-black rounded-lg overflow-hidden m-3">
-                      <DynamicVideoPlayer src={`${apiUrl}${clip.video_url}`} poster="/placeholder-video.jpg" />
+                      <DynamicVideoPlayer 
+                        src={clip.video_url.startsWith("http") ? clip.video_url : `${apiUrl}${clip.video_url}`} 
+                        poster="/placeholder-video.jpg" 
+                      />
                     </div>
 
                     {/* Clip Details */}
@@ -1203,7 +1212,10 @@ export default function TaskPage() {
 
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" asChild>
-                          <a href={`${apiUrl}${clip.video_url}`} download={clip.filename}>
+                          <a 
+                            href={clip.video_url.startsWith("http") ? clip.video_url : `${apiUrl}${clip.video_url}`} 
+                            download={clip.filename}
+                          >
                             <Download className="w-4 h-4" />
                             Download
                           </a>

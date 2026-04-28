@@ -22,6 +22,7 @@ from datetime import timedelta
 from .config import Config
 from .caption_templates import get_template, CAPTION_TEMPLATES
 from .font_registry import find_font_path
+from .utils.subtitle_generator import generate_ass_file
 
 logger = logging.getLogger(__name__)
 config = Config()
@@ -88,18 +89,21 @@ def get_video_transcript(video_path: Path, speech_model: str = "best") -> str:
 
     # Configure AssemblyAI
     aai.settings.api_key = config.assembly_ai_api_key
+    aai.settings.http_timeout = 600.0
     transcriber = aai.Transcriber()
 
     # Request word-level timestamps for precise subtitle sync
     speech_model_value = aai.SpeechModel.best
+    logger.info(f"speech_model_value: {speech_model_value}")
     if speech_model == "nano":
         speech_model_value = aai.SpeechModel.nano
-
+    print("speech_model_value ", speech_model_value)
     config_obj = aai.TranscriptionConfig(
         speaker_labels=True,
         punctuate=True,
         format_text=True,
-        speech_model=speech_model_value,
+        speech_models=["universal-3-pro", "universal-2"],
+        language_detection=True,
     )
 
     try:
@@ -1083,9 +1087,11 @@ def create_fade_subtitles(
                 font=processor.font_path,
                 font_size=calculated_font_size,
                 color=template["font_color"],
-                stroke_color=template.get("stroke_color")
-                if template.get("stroke_color")
-                else None,
+                stroke_color=(
+                    template.get("stroke_color")
+                    if template.get("stroke_color")
+                    else None
+                ),
                 stroke_width=template.get("stroke_width", 0),
                 method="caption",
                 size=(max_text_width, None),
@@ -1178,15 +1184,21 @@ def create_optimized_clip(
         # Fast path: no subtitles + original = ffmpeg stream copy (no re-encoding)
         if not add_subtitles and keep_original:
             import subprocess
+
             result = subprocess.run(
                 [
                     "ffmpeg",
                     "-y",
-                    "-ss", str(start_time),
-                    "-i", str(video_path),
-                    "-t", str(duration),
-                    "-c", "copy",
-                    "-movflags", "+faststart",
+                    "-ss",
+                    str(start_time),
+                    "-i",
+                    str(video_path),
+                    "-t",
+                    str(duration),
+                    "-c",
+                    "copy",
+                    "-movflags",
+                    "+faststart",
                     str(output_path),
                 ],
                 capture_output=True,
@@ -1226,36 +1238,82 @@ def create_optimized_clip(
                 video, start_time, end_time, target_ratio=9 / 16
             )
             cropped_clip = clip.cropped(
-                x1=x_offset, y1=y_offset, x2=x_offset + new_width, y2=y_offset + new_height
+                x1=x_offset,
+                y1=y_offset,
+                x2=x_offset + new_width,
+                y2=y_offset + new_height,
             )
-            target_width, target_height = round_to_even(new_width), round_to_even(new_height)
+            target_width, target_height = round_to_even(new_width), round_to_even(
+                new_height
+            )
             processed_clip = cropped_clip
 
         # Add AssemblyAI subtitles with template support
-        final_clips = [processed_clip]
-
+        ass_path = None
         if add_subtitles:
-            subtitle_clips = create_assemblyai_subtitles(
-                video_path,
-                start_time,
-                end_time,
-                target_width,
-                target_height,
-                font_family,
-                font_size,
-                font_color,
-                caption_template,
-            )
-            final_clips.extend(subtitle_clips)
+            transcript_data = load_cached_transcript_data(video_path)
+            if transcript_data and transcript_data.get("words"):
+                relevant_words = get_words_in_range(
+                    transcript_data, start_time, end_time
+                )
+                if relevant_words:
+                    template = get_template(caption_template)
+                    # Override template with provided params if any
+                    effective_template = {
+                        **template,
+                        "font_family": font_family or template.get("font_family"),
+                        "font_size": font_size or template.get("font_size"),
+                        "font_color": font_color or template.get("font_color"),
+                    }
+
+                    ass_path = output_path.with_suffix(".ass")
+                    generate_ass_file(
+                        relevant_words,
+                        ass_path,
+                        effective_template,
+                        target_width,
+                        target_height,
+                    )
+                    logger.info(f"Generated ASS subtitles at {ass_path}")
 
         # Compose and encode
-        final_clip = (
-            CompositeVideoClip(final_clips) if len(final_clips) > 1 else processed_clip
-        )
+        final_clip = processed_clip
         source_fps = clip.fps if clip.fps and clip.fps > 0 else 30
 
         processor = VideoProcessor(font_family, font_size, font_color)
         encoding_settings = processor.get_optimal_encoding_settings("high")
+
+        # Add subtitles filter if ASS file exists
+        if ass_path and ass_path.exists():
+            # Escape path for ffmpeg subtitles filter
+            # For Linux, we just need to handle single quotes and colons
+            escaped_ass_path = str(ass_path).replace("'", "'\\\\''").replace(":", "\\:")
+            # Path to fonts directory
+            fonts_dir = Path(__file__).parent.parent / "fonts"
+            escaped_fonts_dir = (
+                str(fonts_dir).replace("'", "'\\\\''").replace(":", "\\:")
+            )
+
+            if "ffmpeg_params" not in encoding_settings:
+                encoding_settings["ffmpeg_params"] = []
+
+            # Find if there is already a -vf param
+            vf_exists = False
+            for i, param in enumerate(encoding_settings["ffmpeg_params"]):
+                if param == "-vf":
+                    encoding_settings["ffmpeg_params"][
+                        i + 1
+                    ] += f",subtitles='{escaped_ass_path}':fontsdir='{escaped_fonts_dir}'"
+                    vf_exists = True
+                    break
+
+            if not vf_exists:
+                encoding_settings["ffmpeg_params"].extend(
+                    [
+                        "-vf",
+                        f"subtitles='{escaped_ass_path}':fontsdir='{escaped_fonts_dir}'",
+                    ]
+                )
 
         final_clip.write_videofile(
             str(output_path),
@@ -1409,7 +1467,9 @@ def apply_transition_effect(
 
         # Keep the transition window within both clips so the output still matches
         # the current clip's duration and metadata.
-        transition_duration = min(1.5, transition.duration, clip1.duration, clip2.duration)
+        transition_duration = min(
+            1.5, transition.duration, clip1.duration, clip2.duration
+        )
         if transition_duration <= 0:
             logger.warning("Transition duration is zero, skipping transition effect")
             return False
@@ -1501,9 +1561,7 @@ def create_clips_with_transitions(
     logger.info(
         f"Creating {len(segments)} standalone clips subtitles={add_subtitles} template '{caption_template}'"
     )
-    logger.info(
-        "Inter-clip transitions are disabled for standalone SupoClip exports"
-    )
+    logger.info("Inter-clip transitions are disabled for standalone SupoClip exports")
     return create_clips_from_segments(
         video_path,
         segments,

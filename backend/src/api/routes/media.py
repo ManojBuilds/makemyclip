@@ -10,7 +10,7 @@ import logging
 import uuid
 import aiofiles
 
-from ...config import Config
+from ...config import get_config
 from ...database import get_db
 from ...auth_headers import get_signed_user_id, USER_ID_HEADER
 from ...services.billing_service import BillingService
@@ -31,7 +31,7 @@ router = APIRouter(tags=["media"])
 
 
 def _get_authenticated_user_id(request: Request) -> str:
-    config = Config()
+    config = get_config()
     if config.monetization_enabled:
         return get_signed_user_id(request, config)
 
@@ -216,7 +216,7 @@ async def get_caption_templates():
 @router.get("/broll/status")
 async def get_broll_status():
     """Return whether B-roll integrations are configured."""
-    config = Config()
+    config = get_config()
     return {
         "configured": bool(config.pexels_api_key),
         "provider": "pexels" if config.pexels_api_key else None,
@@ -227,6 +227,7 @@ async def get_broll_status():
 async def upload_video(request: Request):
     """Upload a video to the server."""
     try:
+        config = get_config()
         _get_authenticated_user_id(request)
 
         # Get the form data
