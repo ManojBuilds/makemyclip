@@ -4,6 +4,7 @@ echo "Starting ARQ worker..."
 .venv/bin/arq src.workers.tasks.WorkerSettings &
 
 # Start the FastAPI server
-# Hugging Face Spaces expect the app to run on port 7860
-echo "Starting FastAPI server on port 7860..."
-.venv/bin/uvicorn src.main_refactored:app --host 0.0.0.0 --port 7860
+# Fly.io and other platforms use the PORT env var
+TARGET_PORT=${PORT:-8080}
+echo "Starting FastAPI server on port $TARGET_PORT..."
+.venv/bin/uvicorn src.main_refactored:app --host 0.0.0.0 --port $TARGET_PORT
