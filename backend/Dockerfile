@@ -47,8 +47,8 @@ RUN chmod +x ./start_prod.sh
 # Create necessary directories for video processing
 RUN mkdir -p /app/uploads /app/clips /app/logs /tmp
 
-# Expose the port (FastAPI/Fly.io default)
-EXPOSE 8080
+# Expose the port (FastAPI/Hugging Face default)
+EXPOSE 7860
 
 # Start the application using the multi-process script
 CMD ["./start_prod.sh"]
