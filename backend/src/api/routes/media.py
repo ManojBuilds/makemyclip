@@ -223,6 +223,49 @@ async def get_broll_status():
     }
 
 
+@router.get("/upload/presigned")
+async def get_presigned_upload_url(
+    request: Request,
+    filename: str,
+):
+    """Generate a presigned URL for direct S3 upload."""
+    try:
+        config = get_config()
+        _get_authenticated_user_id(request)
+
+        if config.storage_provider != "s3":
+            raise HTTPException(
+                status_code=400,
+                detail="Presigned URLs are only available when using S3 storage provider.",
+            )
+
+        from ...services.storage import StorageService
+
+        storage_service = StorageService(config)
+        
+        # Generate a unique filename to avoid collisions
+        file_extension = Path(filename).suffix or ".mp4"
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        
+        presigned_data = storage_service.generate_presigned_upload_url(unique_filename)
+        
+        if not presigned_data:
+            raise HTTPException(status_code=500, detail="Failed to generate presigned URL")
+
+        return {
+            "presigned_url": presigned_data["url"],
+            "fields": presigned_data["fields"],
+            "video_path": f"upload://{unique_filename}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error generating presigned URL: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating presigned URL: {str(e)}"
+        )
+
+
 @router.post("/upload")
 async def upload_video(request: Request):
     """Upload a video to the server."""

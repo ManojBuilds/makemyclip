@@ -408,26 +408,62 @@ export default function Home() {
 
       // If uploading file, upload it first
       if (sourceType === "upload" && fileRef.current) {
-        setStatusMessage("Uploading video file...");
+        setStatusMessage("Preparing upload...");
         setProgress(5);
 
-        const formData = new FormData();
-        formData.append("video", fileRef.current);
-        const uploadResponse = await fetch("/api/upload", {
-          method: "POST",
-          body: formData
-        });
+        try {
+          // Try to get a presigned URL first (direct browser-to-S3 upload)
+          const presignedResponse = await fetch(`/api/upload?filename=${encodeURIComponent(fileRef.current.name)}`);
+          
+          if (presignedResponse.ok) {
+            const { presigned_url, fields, video_path } = await presignedResponse.json();
+            
+            setStatusMessage("Uploading video directly to storage...");
+            setProgress(10);
+            
+            const s3FormData = new FormData();
+            Object.entries(fields).forEach(([key, value]) => {
+              s3FormData.append(key, value as string);
+            });
+            s3FormData.append("file", fileRef.current);
 
-        if (!uploadResponse.ok) {
-          const uploadError = await parseApiError(
-            uploadResponse,
-            `Upload error: ${uploadResponse.status}`
-          );
-          throw new Error(formatSupportMessage(uploadError));
+            const s3Response = await fetch(presigned_url, {
+              method: "POST",
+              body: s3FormData,
+            });
+
+            if (!s3Response.ok) {
+              throw new Error("Failed to upload video directly to storage. Please try again.");
+            }
+            
+            videoUrl = video_path;
+            setProgress(25);
+          } else {
+            // Fallback to traditional upload if presigned URL is not supported (e.g. local storage)
+            setStatusMessage("Uploading video file...");
+            const formData = new FormData();
+            formData.append("video", fileRef.current);
+            const uploadResponse = await fetch("/api/upload", {
+              method: "POST",
+              body: formData
+            });
+
+            if (!uploadResponse.ok) {
+              const uploadError = await parseApiError(
+                uploadResponse,
+                `Upload error: ${uploadResponse.status}`
+              );
+              throw new Error(formatSupportMessage(uploadError));
+            }
+
+            const uploadResult = await uploadResponse.json();
+            videoUrl = uploadResult.video_path;
+            setProgress(25);
+          }
+        } catch (uploadErr) {
+          console.error("Upload failed:", uploadErr);
+          throw uploadErr;
         }
-
-        const uploadResult = await uploadResponse.json();
-        videoUrl = uploadResult.video_path;
       }
 
       // Step 1: Start the task (using new refactored endpoint)
@@ -531,8 +567,8 @@ export default function Home() {
                 <div className="flex items-center gap-2 mr-1">
                   <Badge
                     className={`text-[10px] px-1.5 py-0 h-5 ${billingSummary.plan === "pro"
-                        ? "bg-stone-900 text-white"
-                        : "bg-stone-100 text-stone-600 border border-stone-200"
+                      ? "bg-stone-900 text-white"
+                      : "bg-stone-100 text-stone-600 border border-stone-200"
                       }`}
                   >
                     {billingSummary.plan === "pro" ? "Pro" : "Free"}
@@ -541,9 +577,9 @@ export default function Home() {
                     <div className="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${billingSummary.usage_limit &&
-                            billingSummary.usage_count / billingSummary.usage_limit > 0.8
-                            ? "bg-red-500"
-                            : "bg-stone-900"
+                          billingSummary.usage_count / billingSummary.usage_limit > 0.8
+                          ? "bg-red-500"
+                          : "bg-stone-900"
                           }`}
                         style={{
                           width: billingSummary.usage_limit
@@ -594,8 +630,8 @@ export default function Home() {
               {billingSummary?.monetization_enabled && (
                 <Badge
                   className={`text-[10px] px-1.5 py-0 h-5 ${billingSummary.plan === "pro"
-                      ? "bg-stone-900 text-white"
-                      : "bg-stone-100 text-stone-600 border border-stone-200"
+                    ? "bg-stone-900 text-white"
+                    : "bg-stone-100 text-stone-600 border border-stone-200"
                     }`}
                 >
                   {billingSummary.plan === "pro" ? "Pro" : "Free"}
@@ -644,9 +680,9 @@ export default function Home() {
                   <div className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${billingSummary.usage_limit &&
-                          billingSummary.usage_count / billingSummary.usage_limit > 0.8
-                          ? "bg-red-500"
-                          : "bg-stone-900"
+                        billingSummary.usage_count / billingSummary.usage_limit > 0.8
+                        ? "bg-red-500"
+                        : "bg-stone-900"
                         }`}
                       style={{
                         width: billingSummary.usage_limit
@@ -790,8 +826,8 @@ export default function Home() {
                     }}
                     disabled={isLoading}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${sourceType === "youtube"
-                        ? "bg-stone-900 text-white shadow-sm"
-                        : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                      ? "bg-stone-900 text-white shadow-sm"
+                      : "bg-stone-100 text-stone-600 hover:bg-stone-200"
                       }`}
                   >
                     <Youtube className="w-4 h-4" />
@@ -802,8 +838,8 @@ export default function Home() {
                     onClick={() => setSourceType("upload")}
                     disabled={isLoading}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${sourceType === "upload"
-                        ? "bg-stone-900 text-white shadow-sm"
-                        : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                      ? "bg-stone-900 text-white shadow-sm"
+                      : "bg-stone-100 text-stone-600 hover:bg-stone-200"
                       }`}
                   >
                     <Upload className="w-4 h-4" />
@@ -941,8 +977,8 @@ export default function Home() {
               {/* Font Customization Section */}
               <div
                 className={`transition-all duration-500 ease-in-out overflow-hidden ${addSubtitles
-                    ? "max-h-[800px] opacity-100"
-                    : "max-h-0 opacity-0 pointer-events-none"
+                  ? "max-h-[800px] opacity-100"
+                  : "max-h-0 opacity-0 pointer-events-none"
                   }`}
               >
                 <Card className="border-stone-200">
@@ -1180,14 +1216,14 @@ export default function Home() {
           {/* Right Column — Phone Preview */}
           <div
             className={`hidden lg:block flex-shrink-0 overflow-hidden transition-all duration-500 ease-in-out ${sourceType === "upload"
-                ? "w-0 opacity-0"
-                : "w-[340px] opacity-100"
+              ? "w-0 opacity-0"
+              : "w-[340px] opacity-100"
               }`}
           >
             <div
               className={`w-[340px] transition-all duration-500 ease-in-out ${sourceType === "upload"
-                  ? "translate-x-6 scale-[0.97] opacity-0"
-                  : "translate-x-0 scale-100 opacity-100"
+                ? "translate-x-6 scale-[0.97] opacity-0"
+                : "translate-x-0 scale-100 opacity-100"
                 }`}
             >
               <div className="lg:sticky lg:top-8">

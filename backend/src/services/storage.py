@@ -90,6 +90,52 @@ class StorageService:
             logger.error(f"Failed to upload file to S3: {e}")
             return None
 
+    def generate_presigned_upload_url(self, filename: str, expiration: int = 3600) -> Optional[dict]:
+        """
+        Generate a presigned URL to upload a file directly to S3.
+        """
+        if self.config.storage_provider != "s3":
+            return None
+
+        try:
+            # We use generate_presigned_post because it's easier to use from a browser form
+            # and allows more control over conditions.
+            response = self.s3_client.generate_presigned_post(
+                Bucket=self.config.s3_bucket,
+                Key=filename,
+                Fields={"Content-Type": "video/mp4"},
+                Conditions=[
+                    {"Content-Type": "video/mp4"},
+                    ["content-length-range", 0, 500 * 1024 * 1024],  # 500MB max
+                ],
+                ExpiresIn=expiration
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Failed to generate presigned URL: {e}")
+            return None
+
+    async def download_file(self, remote_filename: str, local_path: Path) -> bool:
+        """
+        Download a file from the configured storage provider to a local path.
+        """
+        if self.config.storage_provider == "local":
+            # For local, it should already be there or we can't do much
+            return local_path.exists()
+
+        try:
+            logger.info(f"Downloading {remote_filename} from S3 bucket {self.config.s3_bucket} to {local_path}")
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            self.s3_client.download_file(
+                self.config.s3_bucket,
+                remote_filename,
+                str(local_path)
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to download file from S3: {e}")
+            return False
+
     def get_public_url(self, filename: str) -> str:
         """Get the public URL for a filename."""
         if self.config.storage_provider == "local":

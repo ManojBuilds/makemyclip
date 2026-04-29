@@ -80,6 +80,7 @@ class YouTubeDownloader:
 
 
 def _build_info_options() -> Dict[str, Any]:
+    config = get_config()
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -93,7 +94,19 @@ def _build_info_options() -> Dict[str, Any]:
             "Connection": "keep-alive",
         },
         "nocheckcertificate": True,
+        # Use more resilient player clients to avoid bot detection
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "android", "web", "mweb"],
+                "player_skip": ["webpage", "configs"],
+            }
+        },
     }
+
+    if config.youtube_cookies_path and Path(config.youtube_cookies_path).exists():
+        ydl_opts["cookiefile"] = config.youtube_cookies_path
+        logger.info("Using cookies for yt-dlp from %s", config.youtube_cookies_path)
+
     return ydl_opts
 
 
@@ -345,6 +358,54 @@ def _fetch_video_info_with_youtube_data_api(url: str) -> Dict[str, Any]:
     return normalized
 
 
+def _fetch_video_info_with_apify(url: str) -> Dict[str, Any]:
+    """Fetch video metadata using Apify as a provider."""
+    video_id = get_youtube_video_id(url)
+    if not video_id:
+        raise ValueError(f"Invalid YouTube URL: {url}")
+
+    config = get_config()
+    if not config.apify_api_token:
+        raise ValueError("Missing APIFY_API_TOKEN for Apify metadata provider")
+
+    try:
+        from apify_client import ApifyClient
+    except ImportError:
+        raise ValueError("apify-client not installed")
+
+    client = ApifyClient(config.apify_api_token)
+    logger.info("Fetching YouTube metadata for %s via Apify...", video_id)
+    
+    # We use the same downloader actor as it returns full metadata
+    run = client.actor("epctex/youtube-video-downloader").call(
+        run_input={
+            "startUrls": [url],
+            "proxy": {"useApifyProxy": True},
+        }
+    )
+    
+    dataset_id = run.get("defaultDatasetId")
+    if not dataset_id:
+        raise ValueError("Apify run did not return a dataset ID")
+
+    item = next(client.dataset(dataset_id).iterate_items(), None)
+    if not item:
+        raise ValueError("Apify run returned no metadata items")
+
+    # The epctex actor returns a structure that needs normalization
+    normalized = _empty_video_info(video_id)
+    normalized.update({
+        "title": item.get("title") or item.get("videoTitle"),
+        "description": item.get("description", ""),
+        "duration": item.get("duration"),
+        "uploader": item.get("uploader") or item.get("channelName"),
+        "view_count": item.get("viewCount"),
+        "thumbnail": item.get("thumbnailUrl") or item.get("thumbnail"),
+    })
+    
+    return normalized
+
+
 def fetch_video_info(url: str) -> Optional[Dict[str, Any]]:
     """
     Backward-compatible metadata lookup entrypoint.
@@ -377,13 +438,15 @@ def get_youtube_video_info(
         if primary_provider == YOUTUBE_METADATA_PROVIDER_YTDLP
         else YOUTUBE_METADATA_PROVIDER_YTDLP
     )
-    providers = [primary_provider, secondary_provider]
+    providers = [primary_provider, secondary_provider, "apify"]
     last_error: Optional[Exception] = None
 
     for index, provider in enumerate(providers):
         try:
             if provider == YOUTUBE_METADATA_PROVIDER_DATA_API:
                 video_info = _fetch_video_info_with_youtube_data_api(url)
+            elif provider == "apify":
+                video_info = _fetch_video_info_with_apify(url)
             else:
                 video_info = _fetch_video_info_with_ytdlp(url)
 

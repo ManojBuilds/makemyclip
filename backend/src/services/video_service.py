@@ -294,9 +294,23 @@ class VideoService:
                 if not video_path:
                     raise Exception("Failed to download video")
             else:
-                video_path = VideoService.resolve_local_video_path(url)
-                if not video_path.exists():
-                    raise Exception("Video file not found")
+                if url.startswith(UPLOAD_URL_PREFIX) and config.storage_provider == "s3":
+                    filename = url.removeprefix(UPLOAD_URL_PREFIX)
+                    local_uploads_dir = Path(config.temp_dir) / "uploads"
+                    local_uploads_dir.mkdir(parents=True, exist_ok=True)
+                    video_path = local_uploads_dir / filename
+                    
+                    if not video_path.exists():
+                        logger.info(f"Downloading {filename} from S3...")
+                        from .storage import StorageService
+                        storage_service = StorageService(config)
+                        success = await storage_service.download_file(filename, video_path)
+                        if not success:
+                            raise Exception(f"Failed to download {filename} from S3")
+                else:
+                    video_path = VideoService.resolve_local_video_path(url)
+                    if not video_path.exists():
+                        raise Exception("Video file not found")
 
             # Post-download duration guard (catches cases where preflight info was unavailable)
             file_duration = VideoService._get_file_duration(video_path)
