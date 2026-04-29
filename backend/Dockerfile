@@ -49,11 +49,13 @@ RUN curl -fsSL https://deno.land/install.sh | sh
 # Copy the virtual environment from the builder
 COPY --from=builder /app/.venv /app/.venv
 
-# Copy source code and static assets
+# Copy source code, static assets, and cookies if they exist
 COPY src/ ./src/
 COPY fonts/ ./fonts/
 COPY transitions/ ./transitions/
 COPY start_prod.sh ./
+# This copies cookies.txt if it exists in the backend/ folder
+COPY cookies.txt* ./
 
 # Prepare production start script and directories
 RUN chmod +x ./start_prod.sh && \

@@ -76,6 +76,11 @@ class YouTubeDownloader:
             "age_limit": None,
         }
 
+        config = get_config()
+        if config.youtube_cookies_path and Path(config.youtube_cookies_path).exists():
+            opts["cookiefile"] = config.youtube_cookies_path
+            logger.info("Using cookies for download from %s", config.youtube_cookies_path)
+
         return opts
 
 
