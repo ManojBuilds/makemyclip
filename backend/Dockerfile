@@ -20,8 +20,8 @@ COPY pyproject.toml uv.lock* ./
 RUN uv sync --frozen --no-dev --no-install-project --no-cache
 
 # Force update yt-dlp to the absolute latest version to handle YouTube API changes
-# We do this within the virtual environment created by uv
-RUN .venv/bin/pip install --upgrade --force-reinstall yt-dlp "yt-dlp[default]"
+RUN uv pip install --upgrade --force-reinstall yt-dlp "yt-dlp[default]"
+
 
 # Stage 2: Runtime stage
 FROM python:3.11-slim
