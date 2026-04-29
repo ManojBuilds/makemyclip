@@ -25,8 +25,14 @@ WORKDIR /app
 # Copy pyproject.toml and uv.lock for dependency installation
 COPY pyproject.toml uv.lock* ./
 
-# Create virtual environment and install dependencies using uv sync
-RUN uv venv .venv && uv sync
+# Create virtual environment
+RUN uv venv .venv
+
+# Pre-install CPU-only PyTorch to avoid massive CUDA libraries (reduces image from 5GB+ to ~1GB)
+RUN uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install dependencies using uv sync
+RUN uv sync
 
 # Force update yt-dlp to the absolute latest version to handle YouTube API changes
 # Also install from git to get the very latest commits
