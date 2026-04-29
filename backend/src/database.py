@@ -30,7 +30,16 @@ class Base(DeclarativeBase):
     pass
 
 
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
 def _build_engine(database_url: str) -> AsyncEngine:
+    # asyncpg doesn't support 'sslmode' in the connection string.
+    # If the environment variable suggests SSL is needed, we pass it in connect_args.
+    connect_args = {}
+    original_url = os.getenv("DATABASE_URL", "")
+    if "sslmode=require" in original_url or "sslmode=verify-full" in original_url:
+        connect_args["ssl"] = True
+
     return create_async_engine(
         database_url,
         echo=False,
@@ -38,11 +47,33 @@ def _build_engine(database_url: str) -> AsyncEngine:
         max_overflow=20,
         pool_pre_ping=True,
         pool_recycle=3600,
+        connect_args=connect_args,
     )
 
 
 def get_database_url() -> str:
-    return _database_url_override or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    url = _database_url_override or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    if not url:
+        return url
+
+    # Railway and others often provide 'postgres://', but SQLAlchemy requires 'postgresql://'
+    # and specifically '+asyncpg' for the async driver.
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    # asyncpg does not support 'sslmode' query parameter and will throw a TypeError.
+    # We parse the URL and remove it.
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    if "sslmode" in query:
+        del query["sslmode"]
+
+    new_query = urlencode(query, doseq=True)
+    parsed = parsed._replace(query=new_query)
+    return urlunparse(parsed)
+
 
 
 def configure_database(
