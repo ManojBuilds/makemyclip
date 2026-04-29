@@ -16,7 +16,9 @@ ENV PATH="/root/.deno/bin:${PATH}"
 # Install uv package manager
 RUN pip install uv
 
-# Increase network timeout for uv to prevent failures during package download/extraction
+# Force UV to use CPU-only torch index to reduce image size from 8GB+ to <2GB
+ENV UV_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
+ENV UV_INDEX_STRATEGY="unsafe-best-match"
 ENV UV_HTTP_TIMEOUT=300
 
 # Set working directory
@@ -25,19 +27,11 @@ WORKDIR /app
 # Copy pyproject.toml and uv.lock for dependency installation
 COPY pyproject.toml uv.lock* ./
 
-# Create virtual environment
-RUN uv venv .venv
-
-# Pre-install CPU-only PyTorch to avoid massive CUDA libraries (reduces image from 5GB+ to ~1GB)
-RUN uv pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-# Install dependencies using uv sync
-RUN uv sync
+# Sync dependencies and clean cache in one step
+RUN uv sync --no-cache
 
 # Force update yt-dlp to the absolute latest version to handle YouTube API changes
-# Also install from git to get the very latest commits
-RUN uv pip install --upgrade --force-reinstall yt-dlp
-RUN uv pip install --upgrade --force-reinstall "yt-dlp[default]"
+RUN uv pip install --upgrade --force-reinstall yt-dlp "yt-dlp[default]"
 
 # Copy source code
 COPY src/ ./src/
