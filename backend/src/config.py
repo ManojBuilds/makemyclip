@@ -159,5 +159,4 @@ def get_config() -> Config:
 def set_config_override(config: Config | None) -> None:
     global _config_override
     _config_override = config
-    global _config_override
-    _config_override = config
+
