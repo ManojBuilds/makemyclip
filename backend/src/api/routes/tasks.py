@@ -176,11 +176,9 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
         )
 
         # Save source metadata for resume/retries in environments without sources.url column
-        redis_client = redis.Redis(
-            host=config.redis_host, port=config.redis_port, password=config.redis_password, decode_responses=True
-        )
         try:
-            await redis_client.set(
+            pool = await JobQueue.get_pool()
+            await pool.set(
                 f"task_source:{task_id}",
                 json.dumps({
                     "url": raw_source["url"],
@@ -190,8 +188,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
                 }),
                 ex=60 * 60 * 24 * 7,
             )
-        finally:
-            await redis_client.close()
+        except Exception as e:
+            logger.warning(f"Failed to save task source metadata to Redis: {e}")
 
         logger.info(f"Task {task_id} created and job {job_id} enqueued")
 
@@ -693,13 +691,11 @@ async def cancel_task(
         if task.get("status") in ["completed", "error", "cancelled"]:
             return {"message": f"Task already in terminal state: {task.get('status')}"}
 
-        redis_client = redis.Redis(
-            host=config.redis_host, port=config.redis_port, password=config.redis_password, decode_responses=True
-        )
         try:
-            await redis_client.setex(f"task_cancel:{task_id}", 3600, "1")
-        finally:
-            await redis_client.close()
+            pool = await JobQueue.get_pool()
+            await pool.setex(f"task_cancel:{task_id}", 3600, "1")
+        except Exception as e:
+            logger.warning(f"Failed to set cancellation flag in Redis: {e}")
 
         await task_service.task_repo.update_task_status(
             db,
@@ -749,13 +745,15 @@ async def resume_task(
         output_format = "vertical"
         add_subtitles = True
 
-        redis_client = redis.Redis(
-            host=config.redis_host, port=config.redis_port, password=config.redis_password, decode_responses=True
-        )
         try:
-            source_payload = await redis_client.get(f"task_source:{task_id}")
+            pool = await JobQueue.get_pool()
+            source_payload = await pool.get(f"task_source:{task_id}")
             if source_payload:
-                parsed = json.loads(source_payload)
+                # Arq pool returns bytes or str depending on config, but JobQueue pool 
+                # might not have decode_responses=True by default in all versions.
+                # However, arq pools usually handle this or we can decode manually.
+                payload_str = source_payload.decode("utf-8") if isinstance(source_payload, bytes) else source_payload
+                parsed = json.loads(payload_str)
                 if not source_url:
                     source_url = parsed.get("url")
                 if not source_type:
@@ -766,19 +764,17 @@ async def resume_task(
                 asub = parsed.get("add_subtitles", add_subtitles)
                 if isinstance(asub, bool):
                     add_subtitles = asub
-        finally:
-            await redis_client.close()
+        except Exception as e:
+            logger.warning(f"Failed to retrieve task source metadata from Redis: {e}")
 
         if not source_url or not source_type:
             raise HTTPException(status_code=400, detail="Task source URL is missing")
 
-        redis_client = redis.Redis(
-            host=config.redis_host, port=config.redis_port, password=config.redis_password, decode_responses=True
-        )
         try:
-            await redis_client.delete(f"task_cancel:{task_id}")
-        finally:
-            await redis_client.close()
+            pool = await JobQueue.get_pool()
+            await pool.delete(f"task_cancel:{task_id}")
+        except Exception as e:
+            logger.warning(f"Failed to delete cancellation flag in Redis: {e}")
 
         await task_service.task_repo.update_task_status(
             db,

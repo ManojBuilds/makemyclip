@@ -38,12 +38,18 @@ class VideoService:
         try:
             result = subprocess.run(
                 [
-                    "ffprobe", "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "csv=p=0",
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "csv=p=0",
                     str(path),
                 ],
-                capture_output=True, text=True, check=True,
+                capture_output=True,
+                text=True,
+                check=True,
             )
             return float(result.stdout.strip())
         except Exception:
@@ -294,17 +300,23 @@ class VideoService:
                 if not video_path:
                     raise Exception("Failed to download video")
             else:
-                if url.startswith(UPLOAD_URL_PREFIX) and config.storage_provider == "s3":
+                if (
+                    url.startswith(UPLOAD_URL_PREFIX)
+                    and config.storage_provider == "s3"
+                ):
                     filename = url.removeprefix(UPLOAD_URL_PREFIX)
                     local_uploads_dir = Path(config.temp_dir) / "uploads"
                     local_uploads_dir.mkdir(parents=True, exist_ok=True)
                     video_path = local_uploads_dir / filename
-                    
+
                     if not video_path.exists():
                         logger.info(f"Downloading {filename} from S3...")
                         from .storage import StorageService
+
                         storage_service = StorageService(config)
-                        success = await storage_service.download_file(filename, video_path)
+                        success = await storage_service.download_file(
+                            filename, video_path
+                        )
                         if not success:
                             raise Exception(f"Failed to download {filename} from S3")
                 else:
@@ -415,9 +427,9 @@ class VideoService:
                 "analysis_json": json.dumps(
                     {
                         "summary": relevant_parts.summary if relevant_parts else None,
-                        "key_topics": relevant_parts.key_topics
-                        if relevant_parts
-                        else [],
+                        "key_topics": (
+                            relevant_parts.key_topics if relevant_parts else []
+                        ),
                         "most_relevant_segments": segments_json,
                     }
                 ),

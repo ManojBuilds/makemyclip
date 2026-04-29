@@ -657,7 +657,9 @@ class TaskService:
         new_end = self._seconds_to_mmss(end_seconds)
 
         # Upload to storage
-        video_url = await self.storage_service.upload_file(output_path, output_path.name)
+        video_url = await self.storage_service.upload_file(
+            output_path, output_path.name
+        )
 
         await self.clip_repo.update_clip(
             self.db,
@@ -693,7 +695,9 @@ class TaskService:
         end_seconds = parse_timestamp_to_seconds(clip["end_time"])
 
         # Upload first part
-        video_url_1 = await self.storage_service.upload_file(first_path, first_path.name)
+        video_url_1 = await self.storage_service.upload_file(
+            first_path, first_path.name
+        )
 
         await self.clip_repo.update_clip(
             self.db,
@@ -708,7 +712,9 @@ class TaskService:
         )
 
         # Upload second part
-        video_url_2 = await self.storage_service.upload_file(second_path, second_path.name)
+        video_url_2 = await self.storage_service.upload_file(
+            second_path, second_path.name
+        )
 
         await self.clip_repo.create_clip(
             self.db,
@@ -757,7 +763,9 @@ class TaskService:
         text = " ".join((c.get("text") or "").strip() for c in ordered if c.get("text"))
 
         # Upload merged clip
-        video_url = await self.storage_service.upload_file(merged_path, merged_path.name)
+        video_url = await self.storage_service.upload_file(
+            merged_path, merged_path.name
+        )
 
         first = ordered[0]
         await self.clip_repo.update_clip(
@@ -803,7 +811,9 @@ class TaskService:
         )
 
         # Upload updated clip
-        video_url = await self.storage_service.upload_file(output_path, output_path.name)
+        video_url = await self.storage_service.upload_file(
+            output_path, output_path.name
+        )
 
         await self.clip_repo.update_clip(
             self.db,
