@@ -1,0 +1,2 @@
+backend/fonts/*.ttf filter=lfs diff=lfs merge=lfs -text
+backend/transitions/*.mp4 filter=lfs diff=lfs merge=lfs -text
